@@ -1271,3 +1271,5 @@ https://lite.norton-cloud.com/
 https://svpn.cgtall.cn/
 https://cdn.blingcc.qzz.io/
 https://sahayun.xyz	@#@#	sahayun
+https://dashboard.hades.im/
+https://dash.hades.im/
