@@ -8,6 +8,9 @@ concurrency:
   group: ${{ github.repository }}
   cancel-in-progress: true
 
+env:
+  TZ: Asia/Shanghai
+
 jobs:
   Collect:
     runs-on: ubuntu-latest
