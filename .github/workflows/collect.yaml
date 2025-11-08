@@ -1,4 +1,5 @@
 name: Collect
+
 on:
   schedule:
     - cron: "0 */4 * * *"
@@ -16,20 +17,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: 迁出代码
         uses: actions/checkout@v4
         with:
-          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare
+      - name: 安装Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
-          architecture: "x64"
-          cache: "pip"
+          python-version: '3.x'
+          architecture: 'x64'
+          cache: 'pip'
 
-      - name: Install
-        run: pip3 install -r requirements.txt
+      - name: 加载缓存
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: 设置时区
+        run: sudo timedatectl set-timezone 'Asia/Shanghai'
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
 
       - name: Collect
         run: python -u subscribe/collect.py --all --overwrite --skip
@@ -37,18 +49,56 @@ jobs:
       - name: Timestamp
         run: date
 
-      - name: Commit changes
+      - name: Commit changes to local repository
         run: |
           git config --local user.email '${{ secrets.EMAIL }}'
           git config --local user.name '${{ secrets.NAME }}'
           git pull origin main
           git add ./data/*
-          git commit -m "$(date '+%Y-%m-%d %H:%M:%S')"
+          # 排除特定文件从暂存区
+          git reset HEAD ./data/clash.yaml ./data/singbox.json ./data/v2ray.txt || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit in local repository"
+          else
+            git commit -m "$(date '+%Y-%m-%d %H:%M:%S')"
+            git push origin main
+            echo "Successfully pushed changes to local repository"
+          fi
 
-      - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          branch: main
+      - name: 克隆目标仓库
+        run: |
+          TARGET_URL="https://${{ secrets.BOT }}:x-oauth-basic@github.com/${{ secrets.TARGET_REPO }}.git"
+          echo "Cloning target repository from $TARGET_URL (sensitive info masked)"
+          git clone "$TARGET_URL" target-repo
+
+      - name: 复制文件到目标仓库
+        run: |
+          # 确保目标目录存在
+          mkdir -p target-repo/data/
+          # 只复制指定的三个文件，如果存在
+          for file in clash.yaml singbox.json v2ray.txt; do
+            if [ -f "./data/$file" ]; then
+              cp "./data/$file" "target-repo/data/"
+              echo "Copied ./data/$file to target-repo/data/"
+            else
+              echo "File ./data/$file does not exist, skipping"
+            fi
+          done
+
+      - name: 提交并推送到目标仓库
+        run: |
+          cd target-repo
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ./data/clash.yaml ./data/singbox.json ./data/v2ray.txt
+          if git diff --staged --quiet; then
+            echo "No changes to commit in target repository"
+          else
+            git commit -m "$(date '+%Y-%m-%d %H:%M:%S')"
+            git push origin main
+            echo "Successfully pushed changes to target repository"
+          fi
+        continue-on-error: true
 
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@v2
